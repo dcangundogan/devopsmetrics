@@ -38,16 +38,23 @@ Tarayıcıdan <http://localhost:3000> adresini açın. **Varsayılan olarak
 Tüm gizli/ortam bilgileri `.env.local` dosyasında tutulur. Bu dosya
 `.gitignore` ile repoya **gönderilmez**. Şablon `.env.example`'dadır.
 
-### 2.1. Mock / Canlı Geçişi
+### 2.1. Veri Kaynağı Seçimi
 
 ```bash
-USE_MOCK=true   # mock JSON döner (kimlik bilgisi gerekmez)
-USE_MOCK=false  # gerçek Jira / Jenkins / SQL API'leri kullanılır
+DATA_SOURCE=mock     # deterministik örnek veri (kimlik bilgisi gerekmez)
+DATA_SOURCE=live     # Jira + Jenkins REST API'leri doğrudan
+DATA_SOURCE=devlake  # HİBRİT: Apache DevLake DB'sinden okur (önerilen)
 ```
 
-> Tek bu satırı değiştirip sunucuyu yeniden başlatmak, tüm dashboard'u
-> mock'tan canlı veriye geçirir. Değişiklik sonrası `npm run dev`'i yeniden
-> başlatın (env değişkenleri başlangıçta okunur).
+Eski `USE_MOCK` değişkeni geriye dönük uyumluluk için hâlâ çalışır
+(`DATA_SOURCE` boşsa: `USE_MOCK=false` → live, aksi halde mock).
+
+> Tek bu satırı değiştirip sunucuyu yeniden başlatmak, tüm dashboard'un veri
+> kaynağını değiştirir (env değişkenleri başlangıçta okunur).
+>
+> **Hibrit (`devlake`) kurulumu** için ayrı rehbere bakın:
+> [`DEVLAKE.md`](./DEVLAKE.md) — DevLake'i veri motoru, bu paneli vitrin olarak
+> kullanma.
 
 ### 2.2. Jira (MTTR + Lead Time)
 

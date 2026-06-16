@@ -1,25 +1,24 @@
 import { DashboardClient } from "@/components/DashboardClient";
-import { MOCK_COMPONENTS } from "@/lib/mock/data";
+import {
+  getComponentList,
+  getDataSource,
+  dataSourceLabel,
+} from "@/lib/datasource";
 
-// Ana sayfa — server component. Component listesini env/mock'tan alır,
-// interaktif kısmı DashboardClient'a devreder.
-
-function getComponents(): string[] {
-  // Gerçek modda Jira project key'lerinden, mock modda sabit listeden.
-  const useMock = (process.env.USE_MOCK ?? "true").toLowerCase() !== "false";
-  if (useMock) return [...MOCK_COMPONENTS];
-
-  const raw = process.env.JIRA_PROJECT_KEYS ?? "";
-  const keys = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return keys.length > 0 ? keys : [...MOCK_COMPONENTS];
-}
+// Ana sayfa — server component. Component listesini ve aktif veri kaynağını
+// datasource resolver'dan alır, interaktif kısmı DashboardClient'a devreder.
 
 export default function HomePage() {
-  const components = getComponents();
-  const useMock = (process.env.USE_MOCK ?? "true").toLowerCase() !== "false";
+  const components = getComponentList();
+  const source = getDataSource();
+  const label = dataSourceLabel(source);
+
+  const badgeClass =
+    source === "mock"
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : source === "devlake"
+        ? "bg-blue-50 text-blue-700 border-blue-200"
+        : "bg-green-50 text-green-700 border-green-200";
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8">
@@ -33,14 +32,9 @@ export default function HomePage() {
           </p>
         </div>
         <span
-          className={
-            "rounded-full px-3 py-1 text-xs font-medium " +
-            (useMock
-              ? "bg-amber-50 text-amber-700 border border-amber-200"
-              : "bg-green-50 text-green-700 border border-green-200")
-          }
+          className={`rounded-full border px-3 py-1 text-xs font-medium ${badgeClass}`}
         >
-          {useMock ? "MOCK veri" : "CANLI veri"}
+          {label}
         </span>
       </header>
 

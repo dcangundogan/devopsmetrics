@@ -19,6 +19,10 @@
     "recharts": "^2.13.3",
     "tailwind-merge": "^2.5.4"
   },
+  "optionalDependencies": {
+    "mysql2": "^3.11.4",
+    "pg": "^8.13.1"
+  },
   "devDependencies": {
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.11",

@@ -5,29 +5,25 @@ import {
   jenkinsDeploymentFrequency,
   jenkinsChangeFailureRate,
 } from "./jenkins";
+import {
+  devlakeDeploymentFrequency,
+  devlakeLeadTime,
+  devlakeMttr,
+  devlakeChangeFailureRate,
+} from "./devlake";
+import { getDataSource } from "@/lib/datasource";
 
 // ============================================================
-// Connector dispatcher.
+// Connector dispatcher — aktif veri kaynağına göre connector seçer.
 //
-// USE_MOCK=true  -> mockConnector (deterministik JSON)
-// USE_MOCK=false -> gerçek connector (Jira + Jenkins + SQL)
+//   mock    -> mockConnector    (deterministik JSON)
+//   live    -> liveConnector    (Jira + Jenkins REST doğrudan)
+//   devlake -> devlakeConnector (HİBRİT: DevLake DB'sinden okur)
 //
-// Gerçek API'ye geçiş tek env değişikliğiyle olur. API route'lar
-// yalnızca getConnector()'ı çağırır, kaynaktan habersizdir.
+// API route'lar yalnızca getConnector()'ı çağırır, kaynaktan habersizdir.
 // ============================================================
 
-function isMockEnabled(): boolean {
-  // Varsayılan: mock açık (canlı kimlik bilgisi olmadan da çalışsın)
-  return (process.env.USE_MOCK ?? "true").toLowerCase() !== "false";
-}
-
-/**
- * Gerçek connector — DORA metriklerini doğru veri kaynağına yönlendirir.
- *  - Deployment Frequency  -> Jenkins
- *  - Change Failure Rate   -> Jenkins
- *  - MTTR                  -> Jira (Incident)
- *  - Lead Time             -> Jira (deployment ile zenginleştirilebilir)
- */
+/** Doğrudan Jira/Jenkins REST API connector'ı */
 const liveConnector: MetricsConnector = {
   deploymentFrequency: (q: MetricQuery) => jenkinsDeploymentFrequency(q),
   changeFailureRate: (q: MetricQuery) => jenkinsChangeFailureRate(q),
@@ -35,8 +31,23 @@ const liveConnector: MetricsConnector = {
   leadTime: (q: MetricQuery) => jiraLeadTime(q),
 };
 
+/** Hibrit: Apache DevLake domain-layer DB'sinden okuyan connector */
+const devlakeConnector: MetricsConnector = {
+  deploymentFrequency: (q: MetricQuery) => devlakeDeploymentFrequency(q),
+  changeFailureRate: (q: MetricQuery) => devlakeChangeFailureRate(q),
+  mttr: (q: MetricQuery) => devlakeMttr(q),
+  leadTime: (q: MetricQuery) => devlakeLeadTime(q),
+};
+
 export function getConnector(): MetricsConnector {
-  return isMockEnabled() ? mockConnector : liveConnector;
+  switch (getDataSource()) {
+    case "devlake":
+      return devlakeConnector;
+    case "live":
+      return liveConnector;
+    default:
+      return mockConnector;
+  }
 }
 
 export type { MetricsConnector, MetricQuery, MetricResult };

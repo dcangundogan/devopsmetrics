@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { parseMetricQuery } from "@/lib/query";
 import { buildMockExtraMetrics } from "@/lib/mock/data";
+import { getDataSource } from "@/lib/datasource";
 
 // Ek metrikler (ikinci panel): Code Coverage, Mutation Test, Test Otomasyon,
-// Application Anomaly, Code Review. Gerçek modda SonarQube/Grafana/SQL'den
+// Application Anomaly, Code Review. Gerçek/DevLake modda SonarQube/Grafana/SQL'den
 // beslenir; mock modda deterministik veri döner.
 export async function GET(request: Request) {
   try {
     const query = parseMetricQuery(request.url);
-    const useMock = (process.env.USE_MOCK ?? "true").toLowerCase() !== "false";
 
-    if (useMock) {
+    if (getDataSource() === "mock") {
       return NextResponse.json({
         component: query.component,
         period: query.period,
@@ -18,8 +18,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // Gerçek mod: SonarQube/Grafana/SQL connector'ları buraya bağlanır.
-    // (sql.sqlCodeCoverage gibi) — henüz implemente edilmedi.
+    // Gerçek/DevLake mod: SonarQube/Grafana/SQL connector'ları buraya bağlanır.
+    // (henüz implemente edilmedi — DORA panelleri canlı, ek metrikler TODO)
     return NextResponse.json(
       { error: "Ek metrikler için gerçek connector henüz bağlanmadı." },
       { status: 501 },
