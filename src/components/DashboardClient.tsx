@@ -56,15 +56,43 @@ export function DashboardClient({ components }: { components: string[] }) {
     setError(null);
     const qs = `?component=${encodeURIComponent(component)}&period=${period}`;
     try {
-      const doraResponses = await Promise.all(
-        DORA_METRICS.map((m) =>
-          fetch(ENDPOINTS[m] + qs).then((r) => {
-            if (!r.ok) throw new Error(`${m} alınamadı (${r.status})`);
-            return r.json() as Promise<MetricResult>;
-          }),
-        ),
+      // Her metriği bağımsız çek: biri hata verse bile diğerleri yine gösterilsin.
+      const settled = await Promise.all(
+        DORA_METRICS.map(async (m) => {
+          try {
+            const r = await fetch(ENDPOINTS[m] + qs);
+            const body = await r.json();
+            if (!r.ok) {
+              const msg =
+                (body && body.error) || `${m} alınamadı (HTTP ${r.status})`;
+              return { ok: false as const, metric: m, error: String(msg) };
+            }
+            return { ok: true as const, result: body as MetricResult };
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "ağ hatası";
+            return { ok: false as const, metric: m, error: msg };
+          }
+        }),
       );
-      setResults(doraResponses);
+
+      const ok = settled.filter((s) => s.ok) as {
+        ok: true;
+        result: MetricResult;
+      }[];
+      const failed = settled.filter((s) => !s.ok) as {
+        ok: false;
+        metric: MetricKey;
+        error: string;
+      }[];
+
+      setResults(ok.map((s) => s.result));
+      if (failed.length > 0) {
+        // Tekrar eden mesajları sadeleştir, ilk hatayı öne çıkar.
+        const unique = Array.from(new Set(failed.map((f) => f.error)));
+        setError(
+          `${failed.length}/${DORA_METRICS.length} metrik alınamadı — ${unique[0]}`,
+        );
+      }
 
       const extraRes = await fetch("/api/metrics/extra" + qs);
       if (extraRes.ok) {

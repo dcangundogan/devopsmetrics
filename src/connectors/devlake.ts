@@ -41,25 +41,30 @@ function getDb(): Promise<DbClient> {
   return _client;
 }
 
-/** Bu sorgu için hedef DevLake project_name listesi */
-function projectsFor(query: MetricQuery): string[] {
-  if (query.component !== "ALL") return [query.component];
-  const raw = process.env.DEVLAKE_PROJECTS ?? "";
-  const list = raw
+/**
+ * Bu sorgu için project_name filtre cümlesini üretir.
+ *  - Belirli bir component seçiliyse: o projeyle filtrele.
+ *  - "ALL" + DEVLAKE_PROJECTS doluysa: o listeyle filtrele.
+ *  - "ALL" + DEVLAKE_PROJECTS boşsa: filtre YOK -> DevLake'teki TÜM projeler.
+ * Boş clause döndüğünde sorgu hiç proje filtresi uygulamaz.
+ */
+function projectFilter(query: MetricQuery): {
+  clause: string;
+  params: string[];
+} {
+  if (query.component !== "ALL") {
+    return { clause: "AND pm.project_name IN (?)", params: [query.component] };
+  }
+  const list = (process.env.DEVLAKE_PROJECTS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   if (list.length === 0) {
-    throw new Error(
-      "DEVLAKE_PROJECTS tanımlı değil — 'ALL' için DevLake proje listesi gerekir",
-    );
+    // DEVLAKE_PROJECTS tanımlı değilse "ALL" = tüm projeler (filtre uygulanmaz)
+    return { clause: "", params: [] };
   }
-  return list;
-}
-
-/** IN (...) placeholder'ı üretir */
-function inClause(values: string[]): { sql: string; params: string[] } {
-  return { sql: values.map(() => "?").join(","), params: values };
+  const placeholders = list.map(() => "?").join(",");
+  return { clause: `AND pm.project_name IN (${placeholders})`, params: list };
 }
 
 /** Dönem başlangıcı (Date — her iki driver da Date kabul eder) */
@@ -132,8 +137,7 @@ export async function devlakeDeploymentFrequency(
 ): Promise<MetricResult> {
   const config = DEFAULT_THRESHOLDS["deployment-frequency"];
   const db = await getDb();
-  const projects = projectsFor(query);
-  const { sql: inSql, params: inParams } = inClause(projects);
+  const pf = projectFilter(query);
 
   const rows = await db.query<{ finished_date: Date | string }>(
     `SELECT cdc.cicd_deployment_id AS deployment_id,
@@ -141,12 +145,12 @@ export async function devlakeDeploymentFrequency(
      FROM cicd_deployment_commits cdc
      JOIN project_mapping pm
        ON cdc.cicd_scope_id = pm.row_id AND pm.${db.q("table")} = 'cicd_scopes'
-     WHERE pm.project_name IN (${inSql})
-       AND cdc.result = 'SUCCESS'
+     WHERE cdc.result = 'SUCCESS'
        AND cdc.environment = 'PRODUCTION'
+       ${pf.clause}
        AND cdc.finished_date >= ?
      GROUP BY cdc.cicd_deployment_id`,
-    [...inParams, windowStart(query.period)],
+    [...pf.params, windowStart(query.period)],
   );
 
   const trend = countTrend(
@@ -178,8 +182,7 @@ export async function devlakeLeadTime(
 ): Promise<MetricResult> {
   const config = DEFAULT_THRESHOLDS["lead-time"];
   const db = await getDb();
-  const projects = projectsFor(query);
-  const { sql: inSql, params: inParams } = inClause(projects);
+  const pf = projectFilter(query);
 
   const rows = await db.query<{
     cycle_minutes: number | string;
@@ -192,11 +195,11 @@ export async function devlakeLeadTime(
      JOIN project_mapping pm
        ON pr.base_repo_id = pm.row_id AND pm.${db.q("table")} = 'repos'
      JOIN cicd_deployment_commits cdc ON ppm.deployment_commit_id = cdc.id
-     WHERE pm.project_name IN (${inSql})
-       AND pr.merged_date IS NOT NULL
+     WHERE pr.merged_date IS NOT NULL
        AND ppm.pr_cycle_time IS NOT NULL
+       ${pf.clause}
        AND cdc.finished_date >= ?`,
-    [...inParams, windowStart(query.period)],
+    [...pf.params, windowStart(query.period)],
   );
 
   const hours = rows.map((r) => Number(r.cycle_minutes) / 60);
@@ -231,8 +234,7 @@ export async function devlakeMttr(
 ): Promise<MetricResult> {
   const config = DEFAULT_THRESHOLDS.mttr;
   const db = await getDb();
-  const projects = projectsFor(query);
-  const { sql: inSql, params: inParams } = inClause(projects);
+  const pf = projectFilter(query);
 
   const rows = await db.query<{
     lead_minutes: number | string;
@@ -245,11 +247,11 @@ export async function devlakeMttr(
      JOIN boards b ON bi.board_id = b.id
      JOIN project_mapping pm
        ON b.id = pm.row_id AND pm.${db.q("table")} = 'boards'
-     WHERE pm.project_name IN (${inSql})
-       AND i.type = 'INCIDENT'
+     WHERE i.type = 'INCIDENT'
        AND i.lead_time_minutes IS NOT NULL
+       ${pf.clause}
        AND i.resolution_date >= ?`,
-    [...inParams, windowStart(query.period)],
+    [...pf.params, windowStart(query.period)],
   );
 
   const hours = rows.map((r) => Number(r.lead_minutes) / 60);
@@ -285,8 +287,7 @@ export async function devlakeChangeFailureRate(
 ): Promise<MetricResult> {
   const config = DEFAULT_THRESHOLDS["change-failure-rate"];
   const db = await getDb();
-  const projects = projectsFor(query);
-  const { sql: inSql, params: inParams } = inClause(projects);
+  const pf = projectFilter(query);
 
   const rows = await db.query<{
     finished_date: Date | string;
@@ -300,16 +301,16 @@ export async function devlakeChangeFailureRate(
        FROM cicd_deployment_commits cdc
        JOIN project_mapping pm
          ON cdc.cicd_scope_id = pm.row_id AND pm.${db.q("table")} = 'cicd_scopes'
-       WHERE pm.project_name IN (${inSql})
-         AND cdc.result = 'SUCCESS'
+       WHERE cdc.result = 'SUCCESS'
          AND cdc.environment = 'PRODUCTION'
+         ${pf.clause}
          AND cdc.finished_date >= ?
        GROUP BY cdc.cicd_deployment_id
      ) d
      LEFT JOIN project_issue_metrics pim ON d.deployment_id = pim.deployment_id
      LEFT JOIN issues i ON pim.id = i.id AND i.type = 'INCIDENT'
      GROUP BY d.deployment_id, d.finished_date`,
-    [...inParams, windowStart(query.period)],
+    [...pf.params, windowStart(query.period)],
   );
 
   const total = rows.length;

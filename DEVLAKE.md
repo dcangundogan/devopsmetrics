@@ -84,7 +84,30 @@ dual-dialect DB katmanı [`src/connectors/db.ts`](./src/connectors/db.ts).
 | `live` | Jira + Jenkins REST doğrudan | DevLake yokken hızlı/basit canlı veri |
 | `devlake` | DevLake DB (hibrit) | **Önerilen** — olgun toplama + tarihsel veri |
 
-## 5. Notlar / sınırlar
+## 5. Sorun giderme — "grafik gelmiyor"
+
+Sadece `DEVLAKE_DB_URL` girip grafik göremiyorsanız, sırayla kontrol edin:
+
+1. **Teşhis endpoint'ini açın:** <http://localhost:3000/api/diag>
+   - `connected: false` + hata → DB bağlantısı/kimlik bilgisi yanlış.
+   - `rowCounts` hepsi 0 → DevLake henüz veri toplamamış (blueprint'i çalıştırın).
+   - `productionSuccessDeploymentsLast30d: 0` → deployment'lar PRODUCTION/SUCCESS
+     olarak işaretlenmemiş (DevLake DORA transformation kurallarını kontrol edin).
+   - `projectNamesInDevLake` → DevLake'teki gerçek proje adları. `DEVLAKE_PROJECTS`
+     bu adlarla **birebir** eşleşmeli.
+   - Bir tabloda `error` → DevLake sürümünüzde şema farklı olabilir.
+
+2. **`DEVLAKE_PROJECTS` zorunlu değil:** boş bırakırsanız "ALL" filtresi
+   DevLake'teki **tüm** projeleri sorgular. Belirli projeleri ayırmak isterseniz
+   `projectNamesInDevLake` çıktısındaki adları kullanın.
+
+3. **Tarayıcıdaki kırmızı uyarı şeridi** artık başarısız metriğin gerçek DB
+   hatasını gösterir; bir metrik hata verse bile diğer kartlar yine çizilir.
+
+4. **Veri var ama grafik düz/0** → o dönemde (7/30/90 gün) veri yok; zaman
+   aralığını büyütün veya DevLake'in son collection tarihini kontrol edin.
+
+## 6. Notlar / sınırlar
 
 - `project_name` DevLake'in proje adıdır; filtre tutarlılığı için Jira project
   key'leriyle aynı tutmanız önerilir (`DEVLAKE_PROJECTS`).
